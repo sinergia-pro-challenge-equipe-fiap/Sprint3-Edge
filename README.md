@@ -135,6 +135,10 @@ Armazenar histórico completo para relatórios.
 
 Ampliar para múltiplos dispositivos IoT em rede.
 
+Link do WokWi
+
+https://wokwi.com/projects/442217765568524289
+
 <img width="997" height="671" alt="Captura de Tela 2025-09-16 às 18 34 31" src="https://github.com/user-attachments/assets/088a4614-f1d8-489b-81d9-5a57097fbf23" />
 📜 Licença
 
