@@ -1,115 +1,141 @@
-# 📌 PassaBola – Arquitetura IoT  
-**Sprint 3 – Edge Computing and Computer Systems**  
+Sprint 3 – Edge Computing and Computer Systems
 
-## 👥 Integrantes  
-- **Vitor Bordalo Corrêa Guimarães** – RM: 561592  
-- **Lucas Flekner Branquinho** – RM: [preencher]  
-- **Ronaldo** – RM: [preencher]  
-- **Lucas Abbat** – RM: [preencher]  
+👥 Integrantes
 
----
+Vitor Bordalo Corrêa Guimarães – RM: 561592
 
-## 📖 Descrição do Projeto  
-O **PassaBola** é uma aplicação **IoT (Internet of Things)** voltada para o monitoramento em tempo real de partidas de futebol, especialmente do futebol feminino. A solução busca **coletar, processar e exibir dados de dispositivos conectados**, entregando valor agregado tanto para **torcedores** (com estatísticas ao vivo), quanto para **jogadoras** (com análises de desempenho) e **administradores** (com relatórios e métricas de gestão).  
+Lucas Flekner Branquinho – RM: 562262
 
-A arquitetura proposta combina **dispositivos IoT simulados**, **protocolos de comunicação**, e uma **plataforma de gerenciamento** para análise e visualização dos dados.  
+Ronaldo Aparecido Monteiro Almeida – RM: 565017
 
----
+Lucas Rowlands Abat – RM: 562994
 
-## 🎯 Objetivos  
-- Monitorar dados em tempo real de partidas.  
-- Automatizar a coleta e processamento de informações.  
-- Fornecer dashboards interativos com estatísticas.  
-- Permitir integração futura com sensores físicos em campo.  
-- Gerar relatórios de desempenho para equipes e administradores.  
+📖 Descrição do Projeto
 
----
+O Quiz IoT é uma aplicação baseada em conceitos de IoT (Internet of Things) e Edge Computing, que promove um gameshow interativo com perguntas e respostas em tempo real.
 
-## 🏗️ Arquitetura Proposta  
-A arquitetura IoT foi estruturada em **camadas**, utilizando os seguintes elementos:  
+A proposta é criar uma experiência em que:
 
-- **Dispositivos IoT (Virtuais ou Físicos)** → Sensores simulando dados de partidas (posse de bola, finalizações, gols, desempenho individual).  
-- **Protocolo de Comunicação (MQTT/HTTP)** → Transmissão de dados entre sensores e a plataforma.  
-- **Plataforma de Gerenciamento (FIWARE / HiveMQ / Node-RED)** → Recebimento, tratamento e roteamento das informações.  
-- **Processamento em Edge Computing** → Análise de dados em tempo real próxima à origem.  
-- **Camada de Visualização (Front-end React + Vite + Tailwind)** → Exibição em dashboards para usuários, jogadoras e administradores.  
+O usuário recebe perguntas via console (dispositivo IoT – ESP32).
 
-📊 **Diagrama Simplificado da Arquitetura**:  
-```
-[Sensores IoT] --(MQTT/HTTP)--> [Broker HiveMQ/Node-RED] --(FIWARE)--> [Processamento/Armazenamento] --> [Dashboard PassaBola]
-```
+As respostas são enviadas via Postman/HTTP, simulando a interação do jogador.
 
----
+O sistema valida se a resposta está correta e retorna o feedback instantâneo.
 
-## ⚙️ Desenvolvimento e Configuração  
-1. **Instalação da plataforma IoT**  
-   - Configuração do **HiveMQ** para broker MQTT.  
-   - Integração com **Node-RED** para fluxo de dados.  
-   - Uso do **FIWARE** para gerenciamento de contexto.  
+Esse fluxo une coleta de dados, processamento em tempo real e interação remota, demonstrando como dispositivos conectados podem ser aplicados em jogos, treinamentos educacionais e ambientes de entretenimento.
 
-2. **Criação de Dispositivos Virtuais**  
-   - Simulação de sensores para envio de dados (ex.: gols, posse, finalizações).  
-   - Publicação periódica em tópicos MQTT.  
+🎯 Objetivos
 
-3. **Protocolos de Comunicação**  
-   - MQTT (leve e eficiente para tempo real).  
-   - HTTP (alternativo para APIs REST de integração).  
+Criar um gameshow interativo usando IoT.
 
-4. **Visualização e Interface**  
-   - Front-end em **React + Vite + Tailwind**.  
-   - Páginas dedicadas para **usuário**, **jogadora** e **administrador**.  
-   - Estatísticas ao vivo, rankings, histórico de partidas e relatórios.  
+Processar perguntas e respostas em tempo real.
 
----
+Integrar dispositivos IoT (ESP32) com FIWARE/Orion para gerenciamento de contexto.
 
-## 🧪 Demonstração  
-- **Coleta de dados**: envio de métricas simuladas via MQTT.  
-- **Health check**: monitoramento de integridade da conexão e status dos dispositivos.  
-- **Criação de entidade lógica**: junção de dados de sensores em métricas de partida (posse %, finalizações, ranking).  
-- **Dashboard ao vivo**: exibição dos resultados em tempo real no site **PassaBola**.  
+Permitir que o usuário receba perguntas e envie respostas via diferentes canais (console/Postman).
 
----
+Armazenar dados de desempenho dos participantes para análise posterior.
 
-## 📂 Estrutura do Repositório  
-```
-/PassaBola-IoT
+🏗️ Arquitetura Proposta
+
+O sistema foi modelado em camadas IoT, aproveitando tecnologias já aplicadas em edge computing:
+
+Dispositivo IoT (ESP32) → recebe perguntas e exibe no console para o jogador.
+
+Protocolo de Comunicação (MQTT/HTTP) → intermedia a troca de mensagens entre usuários, Postman e o Orion Context Broker.
+
+Plataforma de Gerenciamento (FIWARE Orion + MongoDB) → armazenamento, validação e gerenciamento das entidades "Pergunta" e "Resposta".
+
+Edge Computing → validação de respostas próxima ao dispositivo, reduzindo latência.
+
+Interface Postman → envio das respostas e feedback ao usuário.
+
+📊 Diagrama Simplificado da Arquitetura:
+
+[ESP32/Console] <--> [Broker MQTT / HTTP API] <--> [Orion Context Broker + MongoDB] --> [Validação/Feedback] --> [Usuário]
+
+⚙️ Desenvolvimento e Configuração
+
+Integração IoT
+
+Configuração do ESP32 para receber perguntas via MQTT e exibir no console.
+
+Conexão do dispositivo ao broker MQTT.
+
+Configuração do FIWARE Orion
+
+Entidades Pergunta e Resposta armazenadas no MongoDB.
+
+Mapeamento dos tópicos para entidades NGSIv2.
+
+Simulação de Usuário
+
+Perguntas são exibidas no console.
+
+Respostas enviadas via Postman (HTTP) para o endpoint /v2/entities/Resposta.
+
+O sistema valida e retorna se a resposta está Correta ou Incorreta.
+
+Edge Computing
+
+Parte do processamento ocorre no dispositivo (feedback imediato).
+
+Parte ocorre na camada de FIWARE, permitindo análise posterior.
+
+🧪 Demonstração
+
+Envio de Pergunta: o sistema publica no ESP32.
+
+Recebimento no Console: jogador lê a questão em tempo real.
+
+Envio de Resposta: via Postman (API REST).
+
+Validação: sistema compara a resposta enviada com o gabarito.
+
+Feedback: exibido no console ("Correto" / "Incorreto").
+
+📂 Estrutura do Repositório
+/Quiz-IoT
 │── /docs              → Documentação e diagramas
-│── /frontend          → Código React (dashboard e site)
-│── /iot-devices       → Scripts de simulação de sensores
-│── /platform-config   → Configuração do FIWARE / HiveMQ / Node-RED
-│── /tests             → Arquivos de teste e simulação
+│── /esp32-code        → Código Arduino para ESP32
+│── /fiware-config     → Configuração do Orion e MongoDB
+│── /postman           → Coleções de requisições
+│── /tests             → Scripts de teste de perguntas e respostas
 │── README.md          → Este documento
-```
 
----
+🚀 Como Executar
 
-## 🚀 Como Executar  
-1. Clone o repositório:  
-   ```bash
-   git clone https://github.com/<seu-repositorio>/PassaBola-IoT.git
-   cd PassaBola-IoT
-   ```
-2. Configure os dispositivos IoT simulados em `/iot-devices`.  
-3. Inicie o **Node-RED** e o **HiveMQ** localmente.  
-4. Execute o front-end:  
-   ```bash
-   cd frontend
-   npm install
-   npm run dev
-   ```
-5. Acesse o dashboard em `http://localhost:5173/`.  
+Clone o repositório:
 
----
+git clone https://github.com/<seu-repositorio>/Quiz-IoT.git
+cd Quiz-IoT
 
-## 📌 Futuras Melhorias  
-- Integração com sensores físicos de campo.  
-- Notificações em tempo real (push para torcedores e jogadoras).  
-- Machine Learning para prever resultados com base em estatísticas.  
-- Escalabilidade com microsserviços em nuvem.  
+
+Configure o ESP32 com o código em /esp32-code.
+
+Inicie o Orion + MongoDB via Docker.
+
+Importe as coleções do Postman em /postman.
+
+Execute o fluxo:
+
+Perguntas → enviadas ao ESP32.
+
+Respostas → enviadas via Postman.
+
+Feedback → mostrado no console do usuário.
+
+📌 Futuras Melhorias
+
+Implementar ranking de jogadores com pontuação acumulada.
+
+Criar interface web com dashboard ao vivo do quiz.
+
+Armazenar histórico completo para relatórios.
+
+Ampliar para múltiplos dispositivos IoT em rede.
+
 <img width="997" height="671" alt="Captura de Tela 2025-09-16 às 18 34 31" src="https://github.com/user-attachments/assets/088a4614-f1d8-489b-81d9-5a57097fbf23" />
+📜 Licença
 
-
----
-
-## 📜 Licença  
-Este projeto é acadêmico e desenvolvido para fins educacionais na disciplina **Edge Computing and Computer Systems**.  
+Este projeto é acadêmico e desenvolvido para fins educacionais na disciplina Edge Computing and Computer Systems.
