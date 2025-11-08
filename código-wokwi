@@ -1,21 +1,32 @@
 #include <WiFi.h>
 #include <PubSubClient.h>
 #include <ArduinoJson.h>
+#include <HTTPClient.h>
 
-// Configurações Wi-Fi e MQTT
-const char* SSID = "Wokwi-GUEST";      // Troque pelo nome da sua rede
-const char* PASSWORD = "";             // Troque pela senha da sua rede
-const char* BROKER_MQTT = "52.146.16.14";  // IP do broker MQTT
+// Config Wi-Fi
+const char* SSID = "Wokwi-GUEST";
+const char* PASSWORD = "";
+
+// Config MQTT
+const char* BROKER_MQTT = "52.146.16.14";
 const int BROKER_PORT = 1883;
-const char* TOPICO_SUBSCRIBE = "/TEF/quiz/cmd";  // Tópico de perguntas
-const char* TOPICO_PUBLISH = "/TEF/quiz/resposta"; // Tópico para enviar resultados
+const char* TOPICO_PERGUNTA = "/TEF/quiz/cmd";
+const char* TOPICO_RESPOSTA_USUARIO = "/TEF/quiz/respostaUsuario";
+const char* TOPICO_RESULTADO = "/TEF/quiz/resposta";
 const char* ID_MQTT = "ESP32_Quiz";
 
-// Variáveis MQTT
+// Orion (HTTP) — onde vamos criar entidades Resposta para que STH registre
+const char* ORION_HOST = "52.146.16.14";
+const int ORION_PORT = 1026;
+
+// LED pins (ajuste conforme sua placa)
+const int PIN_LED_RED = 13;   // pino do LED vermelho
+const int PIN_LED_GREEN = 12; // pino do LED verde
+
 WiFiClient espClient;
 PubSubClient MQTT(espClient);
 
-// Estrutura para armazenar pergunta recebida
+// Estrutura da Pergunta
 struct Pergunta {
   int id;
   String pergunta;
@@ -25,17 +36,30 @@ struct Pergunta {
 Pergunta perguntaAtual;
 volatile bool novaPergunta = false;
 
-// Prototipos
+// Histórico de respostas
+struct Historico {
+  int id;
+  String respostaUsuario;
+};
+Historico historico[50];
+int historicoCount = 0;
+
+// Prototypes
 void setupWiFi();
-void setupMQTT();
 void reconnectMQTT();
 void mqttCallback(char* topic, byte* payload, unsigned int length);
 void exibirPergunta();
-void receberResposta();
+void verificarResposta(String respostaUsuario);
+void enviarRespostaAoOrion(int perguntaId, const String &respostaUsuario, const String &resultado);
 
 void setup() {
   Serial.begin(115200);
   delay(1000);
+
+  pinMode(PIN_LED_RED, OUTPUT);
+  pinMode(PIN_LED_GREEN, OUTPUT);
+  digitalWrite(PIN_LED_RED, LOW);
+  digitalWrite(PIN_LED_GREEN, LOW);
 
   WiFi.mode(WIFI_STA);
   setupWiFi();
@@ -44,7 +68,7 @@ void setup() {
   MQTT.setCallback(mqttCallback);
   reconnectMQTT();
 
-  Serial.println("Aguardando perguntas do Postman via MQTT...");
+  Serial.println("✅ ESP32 pronto. Aguardando perguntas...");
 }
 
 void loop() {
@@ -54,183 +78,175 @@ void loop() {
   MQTT.loop();
 
   if (novaPergunta) {
-    // bloqueia aqui para ler a resposta do usuário, mas mantemos MQTT.loop() dentro de receberResposta()
     exibirPergunta();
-    receberResposta();
     novaPergunta = false;
   }
 }
 
-// Conexão Wi-Fi
 void setupWiFi() {
   WiFi.begin(SSID, PASSWORD);
   Serial.print("Conectando ao Wi-Fi");
-  unsigned long start = millis();
   while (WiFi.status() != WL_CONNECTED) {
     delay(500);
     Serial.print(".");
-    // opcional: timeout de 30s
-    if (millis() - start > 30000UL) {
-      Serial.println("\nTimeout ao conectar Wi-Fi. Tentando de novo...");
-      start = millis();
-      WiFi.disconnect();
-      WiFi.begin(SSID, PASSWORD);
-    }
   }
-  Serial.println("\nConectado ao Wi-Fi!");
-  Serial.print("IP: ");
+  Serial.println("\n✅ Wi-Fi conectado!");
+  Serial.print("IP local: ");
   Serial.println(WiFi.localIP());
 }
 
-// Conexão MQTT
 void reconnectMQTT() {
   while (!MQTT.connected()) {
     Serial.print("Conectando ao broker MQTT...");
     if (MQTT.connect(ID_MQTT)) {
-      Serial.println("Conectado!");
-      if (MQTT.subscribe(TOPICO_SUBSCRIBE)) {
-        Serial.print("Inscrito no tópico: ");
-        Serial.println(TOPICO_SUBSCRIBE);
-      } else {
-        Serial.println("Falha ao inscrever no tópico!");
-      }
+      Serial.println("✅ Conectado!");
+      MQTT.subscribe(TOPICO_PERGUNTA);
+      MQTT.subscribe(TOPICO_RESPOSTA_USUARIO);
     } else {
       Serial.print("Falha, rc=");
       Serial.print(MQTT.state());
-      Serial.println(" Tentando novamente em 2s");
+      Serial.println(" Tentando novamente em 2s...");
       delay(2000);
     }
   }
 }
 
-// Callback MQTT para receber pergunta
 void mqttCallback(char* topic, byte* payload, unsigned int length) {
-  Serial.print("Mensagem recebida no tópico: ");
-  Serial.println(topic);
-
-  // copiamo o payload para um buffer com null-terminator para desserializar com segurança
-  const size_t bufSize = (size_t)length + 1;
-  char msg[bufSize];
+  char msg[length + 1];
   memcpy(msg, payload, length);
   msg[length] = '\0';
 
-  Serial.print("Payload raw: ");
-  Serial.println(msg);
+  Serial.printf("\n📩 Mensagem recebida em [%s]: %s\n", topic, msg);
 
-  // ajustar tamanho do documento dependendo do JSON esperado
   DynamicJsonDocument doc(1024);
   DeserializationError error = deserializeJson(doc, msg);
   if (error) {
-    Serial.print("Erro ao processar JSON: ");
+    Serial.print("Erro JSON: ");
     Serial.println(error.c_str());
     return;
   }
 
-  // Inicializa com valores seguros
-  perguntaAtual.id = 0;
-  perguntaAtual.pergunta = "";
-  for (int i = 0; i < 4; i++) perguntaAtual.opcoes[i] = "";
+  if (String(topic) == TOPICO_PERGUNTA) {
+    perguntaAtual.id = doc["id"] | 0;
+    perguntaAtual.pergunta = doc["pergunta"] | "";
+    for (int i = 0; i < 4; i++) {
+      perguntaAtual.opcoes[i] = doc["opcoes"][i] | "";
+    }
+    perguntaAtual.respostaCorreta = doc["resposta"] | "";
+    novaPergunta = true;
+  } else if (String(topic) == TOPICO_RESPOSTA_USUARIO) {
+    String respostaUsuario = doc["resposta"] | "";
 
-  // Preenche a estrutura de pergunta (checa se campos existem)
-  if (doc.containsKey("id")) {
-    perguntaAtual.id = doc["id"].as<int>();
-  }
-  if (doc.containsKey("pergunta")) {
-    perguntaAtual.pergunta = doc["pergunta"].as<const char*>();
-  }
-
-  // Preenche opções (se vier array)
-  if (doc.containsKey("opcoes") && doc["opcoes"].is<JsonArray>()) {
-    JsonArray arr = doc["opcoes"].as<JsonArray>();
-    for (size_t i = 0; i < 4; i++) {
-      if (i < arr.size()) {
-        perguntaAtual.opcoes[i] = arr[i].as<const char*>();
-      } else {
-        perguntaAtual.opcoes[i] = "";
+    // Verificar se já foi respondida
+    for (int i = 0; i < historicoCount; i++) {
+      if (historico[i].id == perguntaAtual.id) {
+        Serial.println("\n⚠ Pergunta já respondida anteriormente:");
+        Serial.printf("Pergunta: %s\n", perguntaAtual.pergunta.c_str());
+        Serial.printf("Resposta correta: %s\n", perguntaAtual.respostaCorreta.c_str());
+        Serial.printf("Resposta enviada anteriormente: %s\n", historico[i].respostaUsuario.c_str());
+        return;
       }
     }
-  }
 
-  // Trata 'resposta' que pode ser um índice (1..4) ou o texto da resposta
-  perguntaAtual.respostaCorreta = "";
-  if (doc.containsKey("resposta")) {
-    if (doc["resposta"].is<int>()) {
-      int idx = doc["resposta"].as<int>();
-      if (idx >= 1 && idx <= 4) {
-        perguntaAtual.respostaCorreta = perguntaAtual.opcoes[idx - 1];
-      } else {
-        // se índice inválido, guarda como string bruta
-        perguntaAtual.respostaCorreta = String(idx);
-      }
-    } else {
-      // assume string
-      perguntaAtual.respostaCorreta = doc["resposta"].as<const char*>();
+    // Se não respondeu ainda
+    verificarResposta(respostaUsuario);
+
+    if (historicoCount < 50) {
+      historico[historicoCount].id = perguntaAtual.id;
+      historico[historicoCount].respostaUsuario = respostaUsuario;
+      historicoCount++;
     }
   }
-
-  novaPergunta = true;
 }
 
-// Exibe pergunta e opções no Serial
 void exibirPergunta() {
-  Serial.println();
-  Serial.print("Pergunta (ID ");
-  Serial.print(perguntaAtual.id);
-  Serial.print("): ");
-  Serial.println(perguntaAtual.pergunta);
+  Serial.println("\n--- NOVA PERGUNTA ---");
+  Serial.printf("ID %d: %s\n", perguntaAtual.id, perguntaAtual.pergunta.c_str());
   for (int i = 0; i < 4; i++) {
-    Serial.print(i + 1);
-    Serial.print(": ");
-    Serial.println(perguntaAtual.opcoes[i]);
+    Serial.printf("%d: %s\n", i + 1, perguntaAtual.opcoes[i].c_str());
   }
-  Serial.println("Digite o número da resposta correta e pressione ENTER:");
+  Serial.println("👉 Envie sua resposta pelo Postman (MQTT) no tópico /TEF/quiz/respostaUsuario");
 }
 
-// Recebe resposta do usuário e valida (mantém MQTT ativo enquanto espera)
-void receberResposta() {
-  while (true) {
-    // mantém MQTT vivo
-    if (!MQTT.connected()) {
-      reconnectMQTT();
-    }
-    MQTT.loop();
+void verificarResposta(String respostaUsuario) {
+  Serial.printf("\n📝 Resposta recebida: %s\n", respostaUsuario.c_str());
 
-    if (Serial.available()) {
-      String entrada = Serial.readStringUntil('\n');
-      entrada.trim();
-      int opcaoEscolhida = entrada.toInt();
+  bool correta = (respostaUsuario == perguntaAtual.respostaCorreta);
+  String resultadoStr = correta ? "Correto" : "Incorreto";
 
-      if (opcaoEscolhida < 1 || opcaoEscolhida > 4) {
-        Serial.println("Opção inválida! Tente novamente:");
-        continue;
-      }
+  // Publish result via MQTT
+  MQTT.publish(TOPICO_RESULTADO, resultadoStr.c_str());
 
-      String respostaEscolhida = perguntaAtual.opcoes[opcaoEscolhida - 1];
-
-      // compara strings (caso respostaCorreta também seja texto da opção)
-      bool correta = false;
-      if (respostaEscolhida == perguntaAtual.respostaCorreta) {
-        correta = true;
-      } else {
-        // às vezes respostaCorreta veio como índice (string numerica) ou texto diferente;
-        // se respostaCorreta for numérica, compara índices também
-        if (perguntaAtual.respostaCorreta.length() > 0 && perguntaAtual.respostaCorreta.toInt() == opcaoEscolhida) {
-          correta = true;
-        }
-      }
-
-      if (correta) {
-        Serial.println("✔ Resposta correta!");
-        // publica uma resposta simples. Se quiser JSON, pode-se mudar aqui.
-        MQTT.publish(TOPICO_PUBLISH, "Correto");
-      } else {
-        Serial.print("✘ Resposta incorreta! A correta é: ");
-        Serial.println(perguntaAtual.respostaCorreta);
-        MQTT.publish(TOPICO_PUBLISH, "Incorreto");
-      }
-      break;
-    }
-
-    delay(10); // evita loop ocupado
+  // Acende LEDs
+  if (correta) {
+    digitalWrite(PIN_LED_GREEN, HIGH);
+    digitalWrite(PIN_LED_RED, LOW);
+  } else {
+    digitalWrite(PIN_LED_GREEN, LOW);
+    digitalWrite(PIN_LED_RED, HIGH);
   }
+
+  // Mantém o LED aceso por 3 segundos
+  delay(3000);
+  digitalWrite(PIN_LED_GREEN, LOW);
+  digitalWrite(PIN_LED_RED, LOW);
+
+  // Envia entidade Resposta para o Orion (HTTP) — para o STH armazenar depois
+  enviarRespostaAoOrion(perguntaAtual.id, respostaUsuario, resultadoStr);
+
+  // Log no Serial
+  if (correta) {
+    Serial.println("✔ Resposta correta!");
+  } else {
+    Serial.printf("✘ Resposta incorreta! Correta era: %s\n", perguntaAtual.respostaCorreta.c_str());
+  }
+}
+
+void enviarRespostaAoOrion(int perguntaId, const String &respostaUsuario, const String &resultado) {
+  // create unique id with timestamp
+  unsigned long ts = millis();
+  String entityId = "Resposta:" + String(perguntaId) + ":" + String(ts);
+
+  DynamicJsonDocument doc(512);
+  doc["id"] = entityId;
+  doc["type"] = "Resposta";
+
+  JsonObject pId = doc.createNestedObject("perguntaId");
+  pId["value"] = String("Pergunta:") + String(perguntaId);
+
+  JsonObject rUser = doc.createNestedObject("respostaUsuario");
+  rUser["value"] = respostaUsuario;
+
+  JsonObject res = doc.createNestedObject("resultado");
+  res["value"] = resultado;
+
+  // Optionally add timestamp attribute (STH/Orion may set its own)
+  JsonObject timeAttr = doc.createNestedObject("timestamp");
+  timeAttr["value"] = String(millis()); // just as extra info
+
+  String payload;
+  serializeJson(doc, payload);
+
+  // Perform HTTP POST
+  HTTPClient http;
+  String url = String("http://") + ORION_HOST + ":" + String(ORION_PORT) + "/v2/entities";
+  http.begin(url);
+  http.addHeader("Content-Type", "application/json");
+  // optional FIWARE headers:
+  http.addHeader("fiware-service", "smart");
+  http.addHeader("fiware-servicepath", "/");
+
+  int code = http.POST(payload);
+  if (code > 0) {
+    Serial.printf("Orion POST code: %d\n", code);
+    if (code >= 200 && code < 300) {
+      Serial.println("Resposta enviada ao Orion com sucesso.");
+    } else {
+      String resp = http.getString();
+      Serial.printf("Orion responded: %s\n", resp.c_str());
+    }
+  } else {
+    Serial.printf("Falha ao enviar para Orion. erro: %s\n", http.errorToString(code).c_str());
+  }
+  http.end();
 }
